@@ -775,21 +775,8 @@ find_cookie_val2(Name, [Cookie|Rest]) ->
     end.
 
 %%
-url_decode([$%, Hi, Lo | Tail]) ->
-            Hex = yaws:hex_to_integer([Hi, Lo]),
-            [Hex | url_decode(Tail)];
-            url_decode([$?|T]) ->
-                   %% Don't decode the query string here, that is
-                   %% parsed separately.
-                   [$?|T];
-            url_decode([H|T]) when is_integer(H) ->
-                   [H |url_decode(T)];
-            url_decode([]) ->
-                   [];
-            %% deep lists
-            url_decode([H|T]) when is_list(H) ->
-                   [url_decode(H) | url_decode(T)].
-
+url_decode(List) ->
+  http_uri:decode(List).
 
 path_norm(Path) ->
     path_norm_reverse(lists:reverse(Path)).
