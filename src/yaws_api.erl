@@ -775,7 +775,7 @@ find_cookie_val2(Name, [Cookie|Rest]) ->
     end.
 
 url_decode(Content) ->
-  http_uri:decode().
+  http_uri:decode(Content).
 
 path_norm(Path) ->
     path_norm_reverse(lists:reverse(Path)).
