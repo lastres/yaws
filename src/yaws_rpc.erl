@@ -130,7 +130,7 @@ handle_payload(Args, Handler, Type) ->
         {PL, PL}
     end,
   case decode_handler_payload(RpcType, DecodedStr) of
-    Batch when RcpType == urlencoded, is_list(Batch) ->
+    Batch when RpcType == urlencoded, is_list(Batch) ->
       BatchRes =
         lists:foldl(fun(Req, Acc) ->
                         Result = check_decoded_payload(Args, Handler,
