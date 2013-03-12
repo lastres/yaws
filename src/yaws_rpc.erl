@@ -203,6 +203,7 @@ check_decoded_payload(Args, Handler, DecodedResult, Payload, Type, RpcType) ->
 recognize_rpc_type(Args) ->
   case (Args#arg.headers)#headers.content_type of
     "application/dime" -> soap_dime;
+    "application/json" -> json;
     _ ->
       OtherHeaders = ((Args#arg.headers)#headers.other),
       recognize_rpc_hdr([{X,Y,yaws:to_lower(Z),Q,W} ||
@@ -211,7 +212,6 @@ recognize_rpc_type(Args) ->
 
 recognize_rpc_hdr([{_,_,"x-haxe-remoting",_,_}|_]) -> haxe;
 recognize_rpc_hdr([{_,_,"soapaction",_,_}|_])      -> soap;
-recognize_rpc_hdr([{_,_,"application/json",_,_}|_])-> json;
 recognize_rpc_hdr([_|T])                           -> recognize_rpc_hdr(T);
 recognize_rpc_hdr([])                              -> urlencoded.
 
@@ -367,40 +367,45 @@ content_hdr(soap, Args, Payload) ->
 content_hdr(_, _Args, Payload) -> {content, "text/xml", Payload}.
 
 encode_handler_payload({Xml,[]}, _ID, soap_dime) ->
-    {ok, Xml, soap};
+  {ok, Xml, soap};
 encode_handler_payload({Xml,As}, _ID, soap_dime) ->
-    EncodedPayload = yaws_dime:encode(Xml, As),
-    {ok, EncodedPayload};
+  EncodedPayload = yaws_dime:encode(Xml, As),
+  {ok, EncodedPayload};
 encode_handler_payload(Xml, _ID, soap_dime) ->
-    {ok, Xml, soap};
+  {ok, Xml, soap};
 encode_handler_payload({Xml,[]}, _ID, soap) ->
-    {ok, Xml};
+  {ok, Xml};
 encode_handler_payload({Xml,As}, _ID, soap) ->
-    EncodedPayload = yaws_dime:encode(Xml, As),
-    {ok, EncodedPayload, soap_dime};
+  EncodedPayload = yaws_dime:encode(Xml, As),
+  {ok, EncodedPayload, soap_dime};
 encode_handler_payload(Xml, _ID, soap) ->
-    {ok, Xml};
+  {ok, Xml};
 encode_handler_payload({error, [ErlStruct]}, ID, RpcType) ->
-    encode_handler_payload({error, ErlStruct}, ID, RpcType);
+  encode_handler_payload({error, ErlStruct}, ID, RpcType);
 encode_handler_payload({error, ErlStruct}, ID, RpcType) ->
-    StructStr =
-        case RpcType of
-            json -> json2:encode({struct, [{id, ID}, {error, ErlStruct},
-                                           {"jsonrpc", "2.0"}]});
-            haxe -> [$h, $x, $r | haxe:encode({exception, ErlStruct})]
-        end,
-    {ok, StructStr};
+  StructStr =
+    case RpcType of
+      json -> json2:encode({struct, [{id, ID}, {error, ErlStruct},
+                                     {"jsonrpc", "2.0"}]});
+      haxe -> [$h, $x, $r | haxe:encode({exception, ErlStruct})]
+    end,
+  {ok, StructStr};
 encode_handler_payload({response, [ErlStruct]}, ID, RpcType) ->
-    encode_handler_payload({response, ErlStruct}, ID, RpcType);
+  encode_handler_payload({response, ErlStruct}, ID, RpcType);
 encode_handler_payload({response, ErlStruct}, ID, RpcType) ->
-    StructStr =
-        case RpcType of
-            json -> json2:encode({struct, [{result, ErlStruct}, {id, ID},
-                                           {"jsonrpc", "2.0"}]});
-            haxe -> [$h, $x, $r | haxe:encode(ErlStruct)]
-        end,
-    {ok, StructStr}.
+  StructStr =
+    case RpcType of
+      urlencoded -> json2:encode({struct, [{result, ErlStruct}, {id, ID},
+                                     {"jsonrpc", "2.0"}]});
 
+      json -> json2:encode({struct, [{result, ErlStruct}, {id, ID},
+                                     {"jsonrpc", "2.0"}]});
+      haxe -> [$h, $x, $r | haxe:encode(ErlStruct)]
+    end,
+  {ok, StructStr}.
+
+decode_handler_payload(urlencoded, JSonStr) ->
+  decode_handler_payload(json, JSonStr);
 decode_handler_payload(json, JSonStr) ->
     try
         {ok, Obj} = json2:decode_string(JSonStr),
