@@ -112,68 +112,70 @@ parse_request(Args) ->
     end.
 
 handle_payload(Args, Handler, Type) ->
-    RpcType = recognize_rpc_type(Args),
-    %% haXe parameters are URL encoded
-    PL = binary_to_list(Args#arg.clidata),
-    {Payload,DecodedStr} =
-	case RpcType of
-	    T when T==haxe; T==json ->
-                ?Debug("rpc ~p call ~p~n", [T, PL]),
-		{PL, yaws_api:url_decode(PL)};
-	    soap_dime ->
-		[{_,_,_,Req}|As] = yaws_dime:decode(Args#arg.clidata),
-		{Args#arg.clidata, {binary_to_list(Req), As}};
-	    _ ->
-                ?Debug("rpc plaintext call ~p~n", [PL]),
-                {PL, PL}
-	end,
-    case decode_handler_payload(RpcType, DecodedStr) of
-        Batch when RpcType == json, is_list(Batch) ->
-            BatchRes =
-                lists:foldl(fun(Req, Acc) ->
-                                    Result = check_decoded_payload(Args, Handler,
-                                                                   Req, Payload,
-                                                                   Type, json),
-                                    case Result of
-                                        empty ->
-                                            Acc;
-                                        {result, _Code, Send} ->
-                                            [Send|Acc];
-                                        {send, S} ->
-                                            %% TODO: it would be better if
-                                            %% Result was never of the
-                                            %% {send, ...} variety because
-                                            %% it requires us to take the
-                                            %% content out via searching.
-                                            case lists:keysearch(content,1,S) of
-                                                {value, {content, _, Send}} ->
-                                                    [Send|Acc];
-                                                _ ->
-                                                    Acc
-                                            end
-                                    end
-                            end, [], Batch),
-            case BatchRes of
-                [] ->
-                    %% all notifications, no replies
-                    send(Args, 200, json);
-                _ ->
-                    send(Args, 200,
-                         "["++yaws:join_sep(lists:reverse(BatchRes),",")++"]",
-                         [], json)
-            end;
-        NonBatch ->
-            Result = check_decoded_payload(Args, Handler, NonBatch,
-                                           Payload, Type, RpcType),
-            case Result of
-                {send, Send} ->
-                    Send;
-                empty ->
-                    send(Args, 200, RpcType);
-                {result, Code, Send} ->
-                    send(Args, Code, Send, [], RpcType)
-            end
-    end.
+  RpcType = recognize_rpc_type(Args),
+  %% haXe parameters are URL encoded
+  PL = binary_to_list(Args#arg.clidata),
+  {Payload,DecodedStr} =
+    case RpcType of
+      T when T==haxe; T==json ->
+        ?Debug("rpc ~p call ~p~n", [T, PL]),
+        {PL, PL}; %%yaws_api:url_decode(PL)};
+      urlencode ->
+        {PL, yaws_api:url_decode(PL)};
+      soap_dime ->
+        [{_,_,_,Req}|As] = yaws_dime:decode(Args#arg.clidata),
+        {Args#arg.clidata, {binary_to_list(Req), As}};
+      _ ->
+        ?Debug("rpc plaintext call ~p~n", [PL]),
+        {PL, PL}
+    end,
+  case decode_handler_payload(RpcType, DecodedStr) of
+    Batch when RpcType == json, is_list(Batch) ->
+      BatchRes =
+        lists:foldl(fun(Req, Acc) ->
+                        Result = check_decoded_payload(Args, Handler,
+                                                       Req, Payload,
+                                                       Type, json),
+                        case Result of
+                          empty ->
+                            Acc;
+                          {result, _Code, Send} ->
+                            [Send|Acc];
+                          {send, S} ->
+                            %% TODO: it would be better if
+                            %% Result was never of the
+                            %% {send, ...} variety because
+                            %% it requires us to take the
+                            %% content out via searching.
+                            case lists:keysearch(content,1,S) of
+                              {value, {content, _, Send}} ->
+                                [Send|Acc];
+                              _ ->
+                                Acc
+                            end
+                        end
+                    end, [], Batch),
+      case BatchRes of
+        [] ->
+          %% all notifications, no replies
+          send(Args, 200, json);
+        _ ->
+          send(Args, 200,
+               "["++yaws:join_sep(lists:reverse(BatchRes),",")++"]",
+               [], json)
+      end;
+    NonBatch ->
+      Result = check_decoded_payload(Args, Handler, NonBatch,
+                                     Payload, Type, RpcType),
+      case Result of
+        {send, Send} ->
+          Send;
+        empty ->
+          send(Args, 200, RpcType);
+        {result, Code, Send} ->
+          send(Args, Code, Send, [], RpcType)
+      end
+  end.
 
 check_decoded_payload(Args, Handler, DecodedResult, Payload, Type, RpcType) ->
     case DecodedResult of
@@ -199,18 +201,19 @@ check_decoded_payload(Args, Handler, DecodedResult, Payload, Type, RpcType) ->
 %%% "X-Haxe-Remoting" HTTP header, then the "SOAPAction" header,
 %%% and if those are absent we assume the request is JSON.
 recognize_rpc_type(Args) ->
-    case (Args#arg.headers)#headers.content_type of
-	"application/dime" -> soap_dime;
-	_ ->
-	    OtherHeaders = ((Args#arg.headers)#headers.other),
-	    recognize_rpc_hdr([{X,Y,yaws:to_lower(Z),Q,W} ||
-                                  {X,Y,Z,Q,W} <- OtherHeaders])
-    end.
+  case (Args#arg.headers)#headers.content_type of
+    "application/dime" -> soap_dime;
+    _ ->
+      OtherHeaders = ((Args#arg.headers)#headers.other),
+      recognize_rpc_hdr([{X,Y,yaws:to_lower(Z),Q,W} ||
+                          {X,Y,Z,Q,W} <- OtherHeaders])
+  end.
 
 recognize_rpc_hdr([{_,_,"x-haxe-remoting",_,_}|_]) -> haxe;
 recognize_rpc_hdr([{_,_,"soapaction",_,_}|_])      -> soap;
+recognize_rpc_hdr([{_,_,"application/json",_,_}|_])-> json;
 recognize_rpc_hdr([_|T])                           -> recognize_rpc_hdr(T);
-recognize_rpc_hdr([])                              -> json.
+recognize_rpc_hdr([])                              -> urlencoded.
 
 %%%
 %%% call handler/3 and provide session support
