@@ -119,17 +119,21 @@ handle_payload(Args, Handler, Type) ->
     case RpcType of
       T when T==haxe; T==json ->
         ?Debug("rpc ~p call ~p~n", [T, PL]),
-        {PL, PL}; %%yaws_api:url_decode(PL)};
-      urlencode ->
+        NewRpcType = RpcType,
+        {PL, PL};
+      urlencoded ->
+        NewRpcType = json,
         {PL, yaws_api:url_decode(PL)};
       soap_dime ->
+        NewRpcType = RpcType,
         [{_,_,_,Req}|As] = yaws_dime:decode(Args#arg.clidata),
         {Args#arg.clidata, {binary_to_list(Req), As}};
       _ ->
+        NewRpcType = RpcType,
         ?Debug("rpc plaintext call ~p~n", [PL]),
         {PL, PL}
     end,
-  case decode_handler_payload(RpcType, DecodedStr) of
+  case decode_handler_payload(NewRpcType, DecodedStr) of
     Batch when RpcType == json, is_list(Batch) ->
       BatchRes =
         lists:foldl(fun(Req, Acc) ->
@@ -166,14 +170,14 @@ handle_payload(Args, Handler, Type) ->
       end;
     NonBatch ->
       Result = check_decoded_payload(Args, Handler, NonBatch,
-                                     Payload, Type, RpcType),
+                                     Payload, Type, NewRpcType),
       case Result of
         {send, Send} ->
           Send;
         empty ->
-          send(Args, 200, RpcType);
+          send(Args, 200, NewRpcType);
         {result, Code, Send} ->
-          send(Args, Code, Send, [], RpcType)
+          send(Args, Code, Send, [], NewRpcType)
       end
   end.
 
