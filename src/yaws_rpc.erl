@@ -385,6 +385,8 @@ encode_handler_payload({error, [ErlStruct]}, ID, RpcType) ->
 encode_handler_payload({error, ErlStruct}, ID, RpcType) ->
   StructStr =
     case RpcType of
+      urlencoded -> json2:encode({struct, [{id, ID}, {error, ErlStruct},
+                                          {"jsonrpc", "2.0"}]});
       json -> json2:encode({struct, [{id, ID}, {error, ErlStruct},
                                      {"jsonrpc", "2.0"}]});
       haxe -> [$h, $x, $r | haxe:encode({exception, ErlStruct})]
@@ -396,7 +398,7 @@ encode_handler_payload({response, ErlStruct}, ID, RpcType) ->
   StructStr =
     case RpcType of
       urlencoded -> json2:encode({struct, [{result, ErlStruct}, {id, ID},
-                                     {"jsonrpc", "2.0"}]});
+                                           {"jsonrpc", "2.0"}]});
 
       json -> json2:encode({struct, [{result, ErlStruct}, {id, ID},
                                      {"jsonrpc", "2.0"}]});
